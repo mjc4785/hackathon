@@ -10,6 +10,6 @@ We wanted to make an application that will log and remember you and your friends
 
 1) Create a python venv with python 3.8 up to 3.12. No higher no lower. (for info on how to create python venv ask max)
 2) intall the requirements.txt file 
-3) run hugmebrother.py
-4) success
+3) run hand\_tracker.py file on terminal and open up timeline file from files
+4) point at 30 degree angle with back of hand to camera
 
