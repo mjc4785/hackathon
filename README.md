@@ -1,0 +1,15 @@
+# Timeline
+
+This prject is made for the April 18th Mini-Hackathon. there is no real theme, it just said software development. 
+
+## Idea
+
+We wanted to make an application that will log and remember you and your friends memories for future reference. You can upload dates and descriptions with images that can be plotted on a timeline. Then, you can see you and your friends shared memories. Aloneside this, you will also be able to interact with the app using CV hand signaling.
+
+## Get started
+
+1) Create a python venv with python 3.8 up to 3.12. No higher no lower. (for info on how to create python venv ask max)
+2) intall the requirements.txt file 
+3) run script
+4) success
+
