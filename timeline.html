@@ -190,7 +190,7 @@
     #ws-status.disconnected { background: #e74c3c; }
     #hint { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%); font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.2em; color: var(--label); opacity: 0.3; pointer-events: none; transition: opacity 0.6s ease; }
     #hint.hidden { opacity: 0; }
-    #cursor-line { position: fixed; top: 0; left: 50%; width: 1px; height: 100vh; background: var(--accent); opacity: 0.08; pointer-events: none; }
+    #cursor-line { position: fixed; top: 0; left: 50%; width: 2px; height: 100vh; background: var(--accent); opacity: 0.55; pointer-events: none; }
     #empty-hint { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.2em; color: var(--event-sub); opacity: 0.5; pointer-events: none; text-align: center; line-height: 2; transition: opacity 0.4s; }
   </style>
 </head>
@@ -270,14 +270,31 @@
     return null;
   }
 
+  // ── Input sanitization ───────────────────────────────────────────────────
+  // Date: digits, letters, spaces, / and - (supports "April 2026", "44 BCE", "3.8 bya", "04/16/2026")
+  // Title / Desc: letters and numbers only — no punctuation, symbols, or decimals
+  function sanitizeDate(v)        { return v.replace(/[^a-zA-Z0-9 \/\-]/g, ''); }
+  function sanitizeAlphanumeric(v){ return v.replace(/[^a-zA-Z0-9 ]/g, ''); }
+
+  function attachSanitizer(id, fn) {
+    document.getElementById(id).addEventListener('input', function() {
+      const sel = this.selectionStart;
+      const clean = fn(this.value);
+      if (clean !== this.value) { this.value = clean; this.setSelectionRange(sel - 1, sel - 1); }
+    });
+  }
+  attachSanitizer('ev-date',  sanitizeDate);
+  attachSanitizer('ev-title', sanitizeAlphanumeric);
+  attachSanitizer('ev-desc',  sanitizeAlphanumeric);
+
   function addEvent() {
-    const dateRaw  = document.getElementById('ev-date').value.trim();
-    const titleRaw = document.getElementById('ev-title').value.trim();
+    const dateRaw  = sanitizeDate(document.getElementById('ev-date').value.trim());
+    const titleRaw = sanitizeAlphanumeric(document.getElementById('ev-title').value.trim());
+    const descRaw  = sanitizeAlphanumeric(document.getElementById('ev-desc').value.trim());
     if (!dateRaw)  { showErr('enter a date'); return; }
     if (!titleRaw) { showErr('enter an event name'); return; }
     const val = parseDateValue(dateRaw);
     if (val === null) { showErr('unrecognised date — try 1969, 44 bce, 3.8 bya, or MM/DD/YYYY'); return; }
-    const descRaw = document.getElementById('ev-desc').value.trim();
     events.push({ date: dateRaw, val, title: titleRaw, desc: descRaw, photo: pendingPhotoDataUrl, id: Date.now() });
     events.sort((a,b) => a.val - b.val);
     document.getElementById('ev-date').value  = '';
