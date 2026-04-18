@@ -186,11 +186,13 @@
     emptyHint.style.opacity = events.length ? '0' : '0.5';
     if (!events.length) { inner.style.width = '100vw'; return; }
 
-    const totalW = PADDING * 2 + (events.length - 1) * GAP;
+    // Extra half-viewport on each side so first/last events can reach centre
+    const EDGE = Math.round(window.innerWidth / 2);
+    const totalW = EDGE * 2 + (events.length - 1) * GAP;
     inner.style.width = Math.max(totalW, window.innerWidth) + 'px';
 
     events.forEach((ev, i) => {
-      const x = PADDING + i * GAP;
+      const x = EDGE + i * GAP;
       const above = i % 2 === 0;
       const el = document.createElement('div');
       el.className = 'event ' + (above ? 'above' : 'below');
@@ -225,7 +227,7 @@
       inner.appendChild(el);
     });
 
-    for (let x = PADDING; x <= totalW - PADDING; x += TICK_INT) {
+    for (let x = EDGE; x <= totalW - EDGE; x += TICK_INT) {
       const t = document.createElement('div');
       t.className = 'tick'; t.style.left = x + 'px'; t.style.top = '50%';
       t.innerHTML = '<div class="tick-mark"></div>';
@@ -266,7 +268,7 @@
   const MIN_DELTA  = 0.4;          // stop animating below this px/frame
 
   // Finger count → velocity boost per gesture pulse (smaller = shorter jumps)
-  const SPEED = { 1: 28, 2: 52, 3: 80, 4: 112 };
+  const SPEED = { 1: 14, 2: 26, 3: 40, 4: 56 };
 
   function kickScroll(dir) {
     // dir: +1 = right, -1 = left
@@ -316,6 +318,11 @@
       if (gesture === 'HOVER') {
         applyHover();
         showGesture('● hover');
+        return;
+      }
+      if (gesture === 'FIST') {
+        clearHover();
+        showGesture('✊ closed');
         return;
       }
       clearHover();

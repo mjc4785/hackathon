@@ -90,6 +90,10 @@ def get_gesture(hand_landmarks, handedness):
     if all(fingers.values()):
         return "HOVER"
 
+    # ── FIST: all fingers closed = close description ─────────────────────────
+    if not any(fingers.values()):
+        return "FIST"
+
     # ── SCROLL: count extended non-thumb fingers ────────────────────────────
     # Thumb must be closed (fist-like base) to avoid false positives
     if fingers["thumb"]:
@@ -118,6 +122,7 @@ def get_gesture(hand_landmarks, handedness):
 # Labels shown in the OpenCV window
 GESTURE_LABELS = {
     "HOVER": "HOVER",
+    "FIST":  "FIST  ✊",
     **{f"POINTING_LEFT_{n}":  f"<< LEFT  x{n}" for n in range(1, 5)},
     **{f"POINTING_RIGHT_{n}": f"RIGHT >> x{n}" for n in range(1, 5)},
 }
