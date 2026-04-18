@@ -2,6 +2,8 @@
 
 This project is made for the April 18th Mini-Hackathon. Our idea at first was to make either a computer vision hand gesture sensing AI, or a timeline application for tracking you and your friends memories. In the end, we decided to combine them. We created a script that tracks your hand gestures to navigate around the web app. Once you input dates, events, optionally descriptions and/or photos, you're able to look around the page like magic. If you make a mistake or want to forget a memory you're also able to delete the memory node. 
 
+![alt text](FDADE43C-9D2E-4697-B9E6-3AB8E17487C6_1_201_a.jpeg)
+
 ## Gestures
 
 ### Move left and right
@@ -23,10 +25,20 @@ To open the event, face both hand's palms to the camera. like you're pushing som
     .\-nameEnvHere-\Scripts\activate
     ```
     - FOR LINUX
+    ```
+    sudo apt install python3.10 python3.10-venv
+    python3.10 -m venv venv
+    source venv/bin/activate
+    ```
     - FOR MAC
-    `brew install python@3.10`
+    ```
+    brew install python@3.10
+    python3.10 -m venv venv
+    source venv/bin/activate
+    ```
 
 2) intall the requirements.txt file (pip install -r requirements.txt)
 3) run hand\_tracker.py file on terminal and open up timeline file from files (python .\hand_tracker.py)
-4) point at 30 degree angle with back of hand to camera
+4) Open up HTML file *timeline.html* from files in your browser
+5) Have fun creating everlasting memories with your bestest buds all in ONE place!
 
