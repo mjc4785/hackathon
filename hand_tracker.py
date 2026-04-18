@@ -7,12 +7,12 @@ to any connected browser over WebSocket.
 Requirements:
     pip install opencv-python mediapipe websockets
 
-Usage:
-    1. Run this script:   python hand_tracker.py
-    2. Open timeline.html in your browser
-    3. Point LEFT  → timeline scrolls left  (more fingers = faster)
-       Point RIGHT → timeline scrolls right (more fingers = faster)
-       Open palm   → highlight nearest event (hover)
+Gestures:
+    ☝–4 fingers pointing L/R  → scroll (more fingers = faster)
+    🖐  one open palm          → hover highlight nearest event
+    ✊  fist                   → dismiss hover
+    🖐🖐 both palms open       → open detail panel
+    ✊  fist                   → dismiss hover / close detail panel
 """
 
 import asyncio
@@ -24,19 +24,15 @@ import websockets
 from websockets.server import serve
 
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
-
 WS_HOST          = "localhost"
 WS_PORT          = 8765
 GESTURE_COOLDOWN = 0.12   # seconds between scroll pulses
 
-# ─── SHARED STATE ────────────────────────────────────────────────────────────
-
+# ─── SHARED STATE ─────────────────────────────────────────────────────────────
 connected_clients: set = set()
 loop: asyncio.AbstractEventLoop = None
 
-
-# ─── WEBSOCKET SERVER ────────────────────────────────────────────────────────
-
+# ─── WEBSOCKET SERVER ─────────────────────────────────────────────────────────
 async def ws_handler(websocket):
     connected_clients.add(websocket)
     print(f"[WS] Browser connected  (total: {len(connected_clients)})")
@@ -46,7 +42,6 @@ async def ws_handler(websocket):
         connected_clients.discard(websocket)
         print(f"[WS] Browser disconnected (total: {len(connected_clients)})")
 
-
 async def broadcast(message: str):
     if connected_clients:
         await asyncio.gather(
@@ -54,30 +49,23 @@ async def broadcast(message: str):
             return_exceptions=True,
         )
 
-
 def send_gesture(gesture: str):
     if loop and connected_clients:
         asyncio.run_coroutine_threadsafe(broadcast(gesture), loop)
-
 
 def start_ws_server():
     global loop
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-
     async def _run():
         async with serve(ws_handler, WS_HOST, WS_PORT):
             print(f"[WS] Server listening on ws://{WS_HOST}:{WS_PORT}")
             await asyncio.Future()
-
     loop.run_until_complete(_run())
 
-
-# ─── GESTURE DETECTION ───────────────────────────────────────────────────────
-
-def get_gesture(hand_landmarks, handedness):
+# ─── SINGLE-HAND GESTURE ─────────────────────────────────────────────────────
+def get_single_gesture(hand_landmarks):
     lm = hand_landmarks.landmark
-
     fingers = {
         "thumb":  lm[4].y  < lm[3].y,
         "index":  lm[8].y  < lm[6].y,
@@ -86,48 +74,55 @@ def get_gesture(hand_landmarks, handedness):
         "pinky":  lm[20].y < lm[18].y,
     }
 
-    # ── HOVER: all 5 fingers extended = open palm ──────────────────────────
+    # Open palm (all 5 up)
     if all(fingers.values()):
         return "HOVER"
 
-    # ── FIST: all fingers closed = close description ─────────────────────────
+    # Fist (all down)
     if not any(fingers.values()):
         return "FIST"
 
-    # ── SCROLL: count extended non-thumb fingers ────────────────────────────
-    # Thumb must be closed (fist-like base) to avoid false positives
+    # Scroll: thumb closed, 1–4 fingers pointing
     if fingers["thumb"]:
         return ""
-
-    extended = [fingers["index"], fingers["middle"],
-                fingers["ring"],  fingers["pinky"]]
-    num = sum(extended)
+    extended   = [fingers["index"], fingers["middle"], fingers["ring"], fingers["pinky"]]
+    num        = sum(extended)
     if num == 0:
         return ""
-
-    # Average x of extended fingertips vs wrist
-    tip_xs = [lm[8].x, lm[12].x, lm[16].x, lm[20].x]
-    avg_tip_x = sum(x for x, ext in zip(tip_xs, extended) if ext) / num
-    diff      = avg_tip_x - lm[0].x  # wrist
-
+    tip_xs     = [lm[8].x, lm[12].x, lm[16].x, lm[20].x]
+    avg_tip_x  = sum(x for x, ext in zip(tip_xs, extended) if ext) / num
+    diff       = avg_tip_x - lm[0].x
     if diff > 0.1:
-        return f"POINTING_LEFT_{num}"   # 1–4 fingers
+        return f"POINTING_LEFT_{num}"
     elif diff < -0.1:
         return f"POINTING_RIGHT_{num}"
     return ""
 
+# ─── TWO-HAND GESTURE ────────────────────────────────────────────────────────
+def get_two_hand_gesture(landmarks_list):
+    """
+    Called when exactly 2 hands are detected.
+    Returns a combined gesture string or "" if no match.
+    """
+    g0 = get_single_gesture(landmarks_list[0])
+    g1 = get_single_gesture(landmarks_list[1])
 
-# ─── MAIN LOOP ───────────────────────────────────────────────────────────────
+    # Both open palms → open detail
+    if g0 == "HOVER" and g1 == "HOVER":
+        return "DOUBLE_HOVER"
 
-# Labels shown in the OpenCV window
+    return ""
+
+# ─── LABELS ──────────────────────────────────────────────────────────────────
 GESTURE_LABELS = {
-    "HOVER": "HOVER",
-    "FIST":  "FIST  ✊",
+    "HOVER":        "HOVER  🖐",
+    "FIST":         "FIST  ✊",
+    "DOUBLE_HOVER": "OPEN DETAIL  🖐🖐",
     **{f"POINTING_LEFT_{n}":  f"<< LEFT  x{n}" for n in range(1, 5)},
     **{f"POINTING_RIGHT_{n}": f"RIGHT >> x{n}" for n in range(1, 5)},
 }
 
-
+# ─── MAIN LOOP ────────────────────────────────────────────────────────────────
 def main():
     ws_thread = threading.Thread(target=start_ws_server, daemon=True)
     ws_thread.start()
@@ -140,7 +135,7 @@ def main():
 
     with mp_hands.Hands(
         model_complexity=0,
-        max_num_hands=1,
+        max_num_hands=2,              # need 2 for double-palm / X gesture
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5,
     ) as hands:
@@ -155,29 +150,34 @@ def main():
             gesture   = ""
 
             if results.multi_hand_landmarks:
-                for hand_landmarks, handedness in zip(
-                    results.multi_hand_landmarks, results.multi_handedness
-                ):
-                    mp_drawing.draw_landmarks(
-                        frame, hand_landmarks, mp_hands.HAND_CONNECTIONS
-                    )
-                    gesture = get_gesture(hand_landmarks, handedness)
+                num_hands = len(results.multi_hand_landmarks)
 
-                    if gesture:
-                        now = time.monotonic()
-                        # HOVER sends continuously so browser can track it;
-                        # scroll gestures respect cooldown
-                        is_scroll = gesture.startswith("POINTING")
-                        if not is_scroll or (now - last_sent_time >= GESTURE_COOLDOWN):
-                            send_gesture(gesture)
-                            if is_scroll:
-                                last_sent_time = now
+                # Draw all hands
+                for hl in results.multi_hand_landmarks:
+                    mp_drawing.draw_landmarks(frame, hl, mp_hands.HAND_CONNECTIONS)
 
-                        label = GESTURE_LABELS.get(gesture, gesture)
-                        cv2.putText(frame, label, (10, 50),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
+                if num_hands == 2:
+                    gesture = get_two_hand_gesture(results.multi_hand_landmarks)
 
-            # Client count overlay
+                # Fall back to single-hand gesture if two-hand didn't fire
+                if not gesture and num_hands >= 1:
+                    gesture = get_single_gesture(results.multi_hand_landmarks[0])
+
+                if gesture:
+                    now = time.monotonic()
+                    is_scroll = gesture.startswith("POINTING")
+                    # Continuous gestures (hover, double-hover) send every frame
+                    # Scroll gestures respect cooldown
+                    if not is_scroll or (now - last_sent_time >= GESTURE_COOLDOWN):
+                        send_gesture(gesture)
+                        if is_scroll:
+                            last_sent_time = now
+
+                    label = GESTURE_LABELS.get(gesture, gesture)
+                    cv2.putText(frame, label, (10, 50),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1.1, (0, 255, 0), 3)
+
+            # Status overlay
             cv2.putText(frame, f"Browsers: {len(connected_clients)}",
                         (10, frame.shape[0] - 15),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
@@ -188,7 +188,6 @@ def main():
 
     cap.release()
     cv2.destroyAllWindows()
-
 
 if __name__ == "__main__":
     main()

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Timeline</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400&family=Playfair+Display:ital@0;1&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       --bg: #f5f2ed; --line: #1a1a1a; --tick: #1a1a1a; --label: #1a1a1a;
@@ -13,7 +13,7 @@
     }
     html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); font-family: 'DM Mono', monospace; }
 
-    /* Create UI */
+    /* ── Add event UI ──────────────────────────────────────────────────────── */
     #create-ui {
       position: fixed; top: 28px; left: 50%; transform: translateX(-50%);
       display: flex; gap: 10px; align-items: center; z-index: 100;
@@ -21,18 +21,25 @@
     #create-ui input {
       background: transparent; border: none; border-bottom: 1px solid rgba(26,26,26,0.25);
       font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.12em;
-      color: var(--label); outline: none; padding: 4px 0; width: 130px;
-      transition: border-color 0.2s;
+      color: var(--label); outline: none; padding: 4px 0; width: 130px; transition: border-color 0.2s;
     }
     #create-ui input::placeholder { color: var(--event-sub); opacity: 1; }
     #create-ui input:focus { border-bottom-color: var(--accent); }
     #create-ui input#ev-title { width: 180px; }
-    #create-ui input#ev-desc { width: 200px; }
+    #create-ui input#ev-desc  { width: 200px; }
+    /* Photo upload button */
+    #photo-label {
+      font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.18em;
+      color: var(--event-sub); cursor: pointer; padding: 4px 0; text-transform: uppercase;
+      transition: color 0.2s; white-space: nowrap;
+    }
+    #photo-label:hover { color: var(--label); }
+    #photo-label.has-photo { color: var(--accent); }
+    #ev-photo { display: none; }
     #add-btn {
       background: none; border: none; cursor: pointer;
       font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.18em;
-      color: var(--accent); padding: 4px 0; text-transform: uppercase;
-      transition: opacity 0.2s;
+      color: var(--accent); padding: 4px 0; text-transform: uppercase; transition: opacity 0.2s;
     }
     #add-btn:hover { opacity: 0.6; }
     #err-msg {
@@ -42,7 +49,7 @@
     }
     #err-msg.show { opacity: 1; }
 
-    /* Timeline */
+    /* ── Timeline ──────────────────────────────────────────────────────────── */
     #timeline-track {
       position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
       overflow-x: scroll; overflow-y: hidden; cursor: grab; user-select: none;
@@ -57,31 +64,129 @@
     .tick { position: absolute; top: 50%; transform: translateX(-50%) translateY(-50%); display: flex; flex-direction: column; align-items: center; }
     .tick-mark { width: 1px; height: 12px; background: var(--tick); }
 
-    .event { position: absolute; top: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; cursor: default; }
+    /* ── Event nodes ───────────────────────────────────────────────────────── */
+    .event {
+      position: absolute; top: 50%; transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; cursor: pointer;
+    }
     .event.above { flex-direction: column-reverse; transform: translateX(-50%) translateY(-100%); }
+
     .event-connector { width: 1px; height: 40px; background: var(--event-dot); opacity: 0.25; }
-    .event-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--event-dot); flex-shrink: 0; }
+
+    /* Dot sits ON the line for above events, and BELOW the card for below events */
+    .event-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--event-dot); flex-shrink: 0;
+      transition: transform 0.2s;
+    }
     .event-dot.accent { background: var(--accent); width: 8px; height: 8px; }
-    .event-card { max-width: 160px; }
+
+    /* For "below" events: dot goes at top (touching line), then connector, then card */
+    /* dot is already first child for below — no change needed */
+    /* For "above" events: dot is last child (bottom), connector, card, delete = reversed col */
+
+    /* Push the accent dot BELOW the card for below-events */
+    .event.below .event-dot.accent {
+      /* dot is first = sits right on the line ✓ already correct */
+    }
+    /* For below events, move the dot further below the date text */
+    .event.below .event-card { padding-top: 0; }
+    .event.below .event-dot { margin-top: 6px; }
     .event.above .event-card { text-align: right; padding-bottom: 12px; }
-    .event.below .event-card { text-align: left; padding-top: 12px; }
+    .event.below .event-card { text-align: left; }
+
     .event-date { font-family: 'DM Mono', monospace; font-weight: 300; font-size: 9px; letter-spacing: 0.14em; color: var(--event-sub); text-transform: uppercase; margin-bottom: 4px; }
     .event-title { font-family: 'Playfair Display', serif; font-size: 13px; font-weight: 400; color: var(--event-title); line-height: 1.3; }
-    .event-desc { font-family: 'DM Mono', monospace; font-weight: 300; font-size: 8px; letter-spacing: 0.08em; color: var(--event-sub); line-height: 1.5; margin-top: 5px; max-width: 160px; opacity: 0; max-height: 0; overflow: hidden; transition: opacity 0.25s, max-height 0.25s; }
-    .event.above .event-desc { text-align: right; margin-top: 0; margin-bottom: 5px; }
-    .event:hover .event-desc { opacity: 1; max-height: 80px; }
-    .event-delete { font-family: 'DM Mono', monospace; font-size: 8px; letter-spacing: 0.1em; color: var(--event-sub); opacity: 0; transition: opacity 0.2s; cursor: pointer; margin-top: 4px; }
-    .event.above .event-delete { margin-top: 0; margin-bottom: 4px; }
-    .event:hover .event-delete { opacity: 1; }
-    .event.gesture-hover .event-desc { opacity: 1; max-height: 80px; }
-    .event.gesture-hover .event-delete { opacity: 1; }
-    .event.gesture-hover .event-dot { transform: scale(1.8); transition: transform 0.2s; }
-    .event.gesture-hover .event-title { color: var(--accent); transition: color 0.2s; }
 
-    #gesture-indicator { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.2em; color: var(--accent); opacity: 0; pointer-events: none; transition: opacity 0.1s ease; text-transform: uppercase; }
+    /* Accent dot for BELOW events: rendered after card so it's visually under the date */
+    .event.below .accent-dot-spacer { order: 10; } /* push dot below card via flex order */
+
+    .event-thumb {
+      width: 48px; height: 36px; object-fit: cover; margin-top: 6px;
+      opacity: 0.7; transition: opacity 0.2s; border-radius: 1px;
+    }
+    .event.above .event-thumb { margin-top: 0; margin-bottom: 6px; }
+    .event:hover .event-thumb { opacity: 1; }
+
+    .event-desc-inline {
+      font-family: 'DM Mono', monospace; font-weight: 300; font-size: 8px;
+      letter-spacing: 0.08em; color: var(--event-sub); line-height: 1.5; margin-top: 5px;
+      max-width: 160px; opacity: 0; max-height: 0; overflow: hidden;
+      transition: opacity 0.25s, max-height 0.25s;
+    }
+    .event.above .event-desc-inline { text-align: right; margin-top: 0; margin-bottom: 5px; }
+    .event:hover .event-desc-inline,
+    .event.gesture-hover .event-desc-inline { opacity: 1; max-height: 80px; }
+
+    .event-delete {
+      font-family: 'DM Mono', monospace; font-size: 8px; letter-spacing: 0.1em;
+      color: var(--event-sub); opacity: 0; transition: opacity 0.2s; cursor: pointer; margin-top: 4px;
+    }
+    .event.above .event-delete { margin-top: 0; margin-bottom: 4px; }
+    .event:hover .event-delete,
+    .event.gesture-hover .event-delete { opacity: 1; }
+
+    /* Gesture hover state */
+    .event.gesture-hover .event-dot { transform: scale(1.8); }
+    .event.gesture-hover .event-title { color: var(--accent); }
+
+    /* ── Detail overlay ────────────────────────────────────────────────────── */
+    #detail-overlay {
+      position: fixed; inset: 0; z-index: 200;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(245,242,237,0.85); backdrop-filter: blur(6px);
+      opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+    }
+    #detail-overlay.open { opacity: 1; pointer-events: all; }
+
+    #detail-box {
+      background: var(--bg); border: 1px solid rgba(26,26,26,0.12);
+      max-width: 520px; width: 90vw; padding: 48px;
+      position: relative;
+      transform: translateY(12px); transition: transform 0.3s ease;
+    }
+    #detail-overlay.open #detail-box { transform: translateY(0); }
+
+    #detail-close {
+      position: absolute; top: 20px; right: 24px;
+      font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.2em;
+      color: var(--event-sub); cursor: pointer; text-transform: uppercase;
+      transition: color 0.2s;
+    }
+    #detail-close:hover { color: var(--accent); }
+
+    #detail-date {
+      font-family: 'DM Mono', monospace; font-weight: 300; font-size: 9px;
+      letter-spacing: 0.2em; color: var(--event-sub); text-transform: uppercase; margin-bottom: 12px;
+    }
+    #detail-title {
+      font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 600;
+      color: var(--event-title); line-height: 1.2; margin-bottom: 24px;
+    }
+    #detail-photo {
+      width: 100%; max-height: 280px; object-fit: cover; margin-bottom: 24px;
+      display: none;
+    }
+    #detail-photo.has-photo { display: block; }
+    #detail-desc {
+      font-family: 'DM Mono', monospace; font-weight: 300; font-size: 11px;
+      letter-spacing: 0.08em; color: var(--event-sub); line-height: 1.8;
+    }
+    #detail-no-desc {
+      font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.14em;
+      color: var(--event-sub); opacity: 0.4; font-style: italic;
+    }
+
+    /* ── HUD ───────────────────────────────────────────────────────────────── */
+    #gesture-indicator {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.2em;
+      color: var(--accent); opacity: 0; pointer-events: none;
+      transition: opacity 0.1s ease; text-transform: uppercase; z-index: 300;
+    }
     #gesture-indicator.visible { opacity: 0.6; }
-    #ws-status { position: fixed; bottom: 20px; right: 20px; width: 7px; height: 7px; border-radius: 50%; background: #ccc; transition: background 0.4s; }
-    #ws-status.connected { background: #27ae60; }
+    #ws-status { position: fixed; bottom: 20px; right: 20px; width: 7px; height: 7px; border-radius: 50%; background: #ccc; transition: background 0.4s; z-index: 100; }
+    #ws-status.connected    { background: #27ae60; }
     #ws-status.disconnected { background: #e74c3c; }
     #hint { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%); font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.2em; color: var(--label); opacity: 0.3; pointer-events: none; transition: opacity 0.6s ease; }
     #hint.hidden { opacity: 0; }
@@ -92,137 +197,200 @@
 <body>
 
 <div id="create-ui">
-  <input id="ev-date" placeholder="date" autocomplete="off" />
-  <input id="ev-title" placeholder="event name" autocomplete="off" />
-  <input id="ev-desc" placeholder="description (optional)" autocomplete="off" />
+  <input id="ev-date"  placeholder="date"                autocomplete="off" />
+  <input id="ev-title" placeholder="event name"          autocomplete="off" />
+  <input id="ev-desc"  placeholder="description (optional)" autocomplete="off" />
+  <label id="photo-label" for="ev-photo">+ photo</label>
+  <input id="ev-photo" type="file" accept="image/*" />
   <button id="add-btn" onclick="addEvent()">add</button>
 </div>
 <div id="err-msg"></div>
 
 <div id="timeline-track"><div id="timeline-inner"><div id="spine"></div></div></div>
 <div id="cursor-line"></div>
-<div id="hint">scroll or point to travel</div>
+<div id="hint">scroll or point to travel · click a dot to open</div>
 <div id="empty-hint">add an event above<br>to begin</div>
 <div id="gesture-indicator"></div>
 <div id="ws-status" title="Hand tracker connection"></div>
 
-<script>
-  const PADDING = 260, GAP = 220, TICK_INT = 440, SCROLL_AMOUNT = 300;
-  let events = [];
+<!-- Detail overlay -->
+<div id="detail-overlay">
+  <div id="detail-box">
+    <div id="detail-close" onclick="closeDetail()">close ✕</div>
+    <div id="detail-date"></div>
+    <div id="detail-title"></div>
+    <img id="detail-photo" src="" alt="" />
+    <div id="detail-desc"></div>
+  </div>
+</div>
 
-  const inner = document.getElementById('timeline-inner');
-  const track = document.getElementById('timeline-track');
-  const hint = document.getElementById('hint');
+<script>
+  const PADDING = 260, GAP = 220, TICK_INT = 440;
+  let events = [];
+  let pendingPhotoDataUrl = null;
+
+  const inner   = document.getElementById('timeline-inner');
+  const track   = document.getElementById('timeline-track');
+  const hint    = document.getElementById('hint');
   const emptyHint = document.getElementById('empty-hint');
-  const errEl = document.getElementById('err-msg');
-  let errTimer = null;
+  const errEl   = document.getElementById('err-msg');
+  let errTimer  = null;
+
+  // ── Photo file picker ────────────────────────────────────────────────────
+  document.getElementById('ev-photo').addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) { pendingPhotoDataUrl = null; document.getElementById('photo-label').classList.remove('has-photo'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      pendingPhotoDataUrl = e.target.result;
+      document.getElementById('photo-label').classList.add('has-photo');
+      document.getElementById('photo-label').textContent = '✓ photo';
+    };
+    reader.readAsDataURL(file);
+  });
 
   function showErr(msg) {
-    errEl.textContent = msg;
-    errEl.classList.add('show');
-    clearTimeout(errTimer);
-    errTimer = setTimeout(() => errEl.classList.remove('show'), 2400);
+    errEl.textContent = msg; errEl.classList.add('show');
+    clearTimeout(errTimer); errTimer = setTimeout(() => errEl.classList.remove('show'), 2400);
   }
 
   function parseDateValue(raw) {
     const s = raw.trim().toLowerCase();
     if (!s) return null;
-
-    // MM/DD/YYYY
     const mdyMatch = raw.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (mdyMatch) {
-      const d = new Date(parseInt(mdyMatch[3]), parseInt(mdyMatch[1]) - 1, parseInt(mdyMatch[2]));
-      if (!isNaN(d.getTime())) return d.getFullYear() + (d.getMonth() / 12) + (d.getDate() / 365);
-    }
-    // bya
-    const byaMatch = s.match(/^([\d.]+)\s*bya$/);
-    if (byaMatch) return -parseFloat(byaMatch[1]) * 1e9;
-    // mya
-    const myaMatch = s.match(/^([\d.]+)\s*(mya|ma)$/);
-    if (myaMatch) return -parseFloat(myaMatch[1]) * 1e6;
-    // kya
-    const kyaMatch = s.match(/^([\d.]+)\s*(kya|ka)$/);
-    if (kyaMatch) return -parseFloat(kyaMatch[1]) * 1e3;
-    // BCE/BC
-    const bcMatch = s.match(/^(\d[\d.,]*)\s*(bce?|bc)$/);
-    if (bcMatch) return -parseFloat(bcMatch[1].replace(/,/g, ''));
-    // plain year
+    if (mdyMatch) { const d = new Date(parseInt(mdyMatch[3]), parseInt(mdyMatch[1])-1, parseInt(mdyMatch[2])); if (!isNaN(d.getTime())) return d.getFullYear()+(d.getMonth()/12)+(d.getDate()/365); }
+    const byaMatch = s.match(/^([\d.]+)\s*bya$/); if (byaMatch) return -parseFloat(byaMatch[1])*1e9;
+    const myaMatch = s.match(/^([\d.]+)\s*(mya|ma)$/); if (myaMatch) return -parseFloat(myaMatch[1])*1e6;
+    const kyaMatch = s.match(/^([\d.]+)\s*(kya|ka)$/); if (kyaMatch) return -parseFloat(kyaMatch[1])*1e3;
+    const bcMatch  = s.match(/^(\d[\d.,]*)\s*(bce?|bc)$/); if (bcMatch) return -parseFloat(bcMatch[1].replace(/,/g,''));
     if (s.match(/^-?\d+$/)) return parseInt(s);
-    // "April 16th, 2026" / "April 16, 2026" — strip ordinal suffix then parse
-    const ordinalStripped = raw.replace(/(\d+)(st|nd|rd|th)/i, '$1');
-    const d2 = new Date(ordinalStripped);
-    if (!isNaN(d2.getTime())) return d2.getFullYear() + (d2.getMonth() / 12) + (d2.getDate() / 365);
-    // natural date string
-    const d = new Date(raw);
-    if (!isNaN(d.getTime())) return d.getFullYear() + (d.getMonth() / 12);
-
+    const ordinalStripped = raw.replace(/(\d+)(st|nd|rd|th)/i,'$1');
+    const d2 = new Date(ordinalStripped); if (!isNaN(d2.getTime())) return d2.getFullYear()+(d2.getMonth()/12)+(d2.getDate()/365);
+    const d = new Date(raw); if (!isNaN(d.getTime())) return d.getFullYear()+(d.getMonth()/12);
     return null;
   }
 
   function addEvent() {
-    const dateRaw = document.getElementById('ev-date').value.trim();
+    const dateRaw  = document.getElementById('ev-date').value.trim();
     const titleRaw = document.getElementById('ev-title').value.trim();
-    if (!dateRaw) { showErr('enter a date'); return; }
+    if (!dateRaw)  { showErr('enter a date'); return; }
     if (!titleRaw) { showErr('enter an event name'); return; }
     const val = parseDateValue(dateRaw);
     if (val === null) { showErr('unrecognised date — try 1969, 44 bce, 3.8 bya, or MM/DD/YYYY'); return; }
     const descRaw = document.getElementById('ev-desc').value.trim();
-    events.push({ date: dateRaw, val, title: titleRaw, desc: descRaw, id: Date.now() });
-    events.sort((a, b) => a.val - b.val);
-    document.getElementById('ev-date').value = '';
+    events.push({ date: dateRaw, val, title: titleRaw, desc: descRaw, photo: pendingPhotoDataUrl, id: Date.now() });
+    events.sort((a,b) => a.val - b.val);
+    document.getElementById('ev-date').value  = '';
     document.getElementById('ev-title').value = '';
-    document.getElementById('ev-desc').value = '';
+    document.getElementById('ev-desc').value  = '';
+    document.getElementById('ev-photo').value = '';
+    document.getElementById('photo-label').textContent = '+ photo';
+    document.getElementById('photo-label').classList.remove('has-photo');
+    pendingPhotoDataUrl = null;
     document.getElementById('ev-date').focus();
     render();
   }
 
-  function deleteEvent(id) {
+  function deleteEvent(id, e) {
+    e.stopPropagation();
     events = events.filter(e => e.id !== id);
     render();
   }
 
+  // ── Detail overlay ────────────────────────────────────────────────────────
+  const overlay     = document.getElementById('detail-overlay');
+  const detailPhoto = document.getElementById('detail-photo');
+  let openEventId   = null;
+
+  function openDetail(ev) {
+    openEventId = ev.id;
+    document.getElementById('detail-date').textContent  = ev.date;
+    document.getElementById('detail-title').textContent = ev.title;
+    if (ev.photo) {
+      detailPhoto.src = ev.photo;
+      detailPhoto.classList.add('has-photo');
+    } else {
+      detailPhoto.src = '';
+      detailPhoto.classList.remove('has-photo');
+    }
+    const descEl = document.getElementById('detail-desc');
+    if (ev.desc) {
+      descEl.textContent = ev.desc;
+      descEl.style.display = '';
+    } else {
+      descEl.textContent = '';
+      descEl.style.display = 'none';
+    }
+    overlay.classList.add('open');
+  }
+
+  function closeDetail() {
+    overlay.classList.remove('open');
+    openEventId = null;
+  }
+
+  // Close on overlay background click
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeDetail(); });
+  // Close on Escape
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+
+  // ── Render ────────────────────────────────────────────────────────────────
   function render() {
     inner.querySelectorAll('.event, .tick').forEach(n => n.remove());
     emptyHint.style.opacity = events.length ? '0' : '0.5';
     if (!events.length) { inner.style.width = '100vw'; return; }
 
-    // Extra half-viewport on each side so first/last events can reach centre
-    const EDGE = Math.round(window.innerWidth / 2);
+    const EDGE   = Math.round(window.innerWidth / 2);
     const totalW = EDGE * 2 + (events.length - 1) * GAP;
     inner.style.width = Math.max(totalW, window.innerWidth) + 'px';
 
     events.forEach((ev, i) => {
-      const x = EDGE + i * GAP;
+      const x     = EDGE + i * GAP;
       const above = i % 2 === 0;
-      const el = document.createElement('div');
-      el.className = 'event ' + (above ? 'above' : 'below');
+      const el    = document.createElement('div');
+      el.className  = 'event ' + (above ? 'above' : 'below');
       el.style.left = x + 'px';
-      el.style.top = '50%';
+      el.style.top  = '50%';
+      el.dataset.id = ev.id;
+      el.addEventListener('click', () => openDetail(ev));
+
+      const dot  = document.createElement('div');
+      dot.className = 'event-dot accent';
+
+      const conn = document.createElement('div');
+      conn.className = 'event-connector';
+
+      const card = document.createElement('div');
+      card.className = 'event-card';
+
+      // Thumbnail
+      const thumbHtml = ev.photo
+        ? `<img class="event-thumb" src="${ev.photo}" alt="" />`
+        : '';
+
+      if (above) {
+        // above: card top, connector, dot on line at bottom
+        card.innerHTML = `<div class="event-date">${ev.date}</div><div class="event-title">${ev.title}</div>${ev.desc ? `<div class="event-desc-inline">${ev.desc}</div>` : ''}${thumbHtml}`;
+      } else {
+        // below: dot on line at top, connector, card — accent dot rendered AFTER card
+        card.innerHTML = `<div class="event-date">${ev.date}</div><div class="event-title">${ev.title}</div>${ev.desc ? `<div class="event-desc-inline">${ev.desc}</div>` : ''}${thumbHtml}`;
+      }
 
       const del = document.createElement('div');
       del.className = 'event-delete';
       del.textContent = 'remove';
-      del.onclick = () => deleteEvent(ev.id);
-
-      const card = document.createElement('div');
-      card.className = 'event-card';
-      card.innerHTML = `<div class="event-date">${ev.date}</div><div class="event-title">${ev.title}</div>${ev.desc ? `<div class="event-desc">${ev.desc}</div>` : ''}`;
-
-      const conn = document.createElement('div');
-      conn.className = 'event-connector';
-      const dot = document.createElement('div');
-      dot.className = 'event-dot accent';
+      del.addEventListener('click', e => deleteEvent(ev.id, e));
 
       if (above) {
         el.appendChild(del);
         el.appendChild(card);
         el.appendChild(conn);
-        el.appendChild(dot);
+        el.appendChild(dot);  // dot at bottom = on the line
       } else {
-        el.appendChild(dot);
-        el.appendChild(conn);
+        el.appendChild(conn);  // connector from line down
         el.appendChild(card);
         el.appendChild(del);
+        el.appendChild(dot);   // dot at bottom = below description
       }
       inner.appendChild(el);
     });
@@ -235,107 +403,111 @@
     }
   }
 
-  // Drag to scroll
-  let isDragging = false, startX = 0, startScroll = 0;
-  track.addEventListener('mousedown', e => { isDragging = true; startX = e.clientX; startScroll = track.scrollLeft; });
-  window.addEventListener('mousemove', e => { if (!isDragging) return; track.scrollLeft = startScroll - (e.clientX - startX); });
+  // ── Drag to scroll ────────────────────────────────────────────────────────
+  let isDragging = false, startX = 0, startScroll = 0, didDrag = false;
+  track.addEventListener('mousedown', e => { isDragging = true; didDrag = false; startX = e.clientX; startScroll = track.scrollLeft; });
+  window.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) > 4) didDrag = true;
+    track.scrollLeft = startScroll - dx;
+  });
   window.addEventListener('mouseup', () => { isDragging = false; });
   track.addEventListener('scroll', () => hint.classList.add('hidden'), { once: true });
 
   // Keyboard shortcuts
-  document.getElementById('ev-title').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('ev-desc').focus(); });
-  document.getElementById('ev-desc').addEventListener('keydown', e => { if (e.key === 'Enter') addEvent(); });
-  document.getElementById('ev-date').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('ev-title').focus(); });
+  document.getElementById('ev-title').addEventListener('keydown', e => { if (e.key==='Enter') document.getElementById('ev-desc').focus(); });
+  document.getElementById('ev-desc').addEventListener('keydown',  e => { if (e.key==='Enter') addEvent(); });
+  document.getElementById('ev-date').addEventListener('keydown',  e => { if (e.key==='Enter') document.getElementById('ev-title').focus(); });
 
-  // WebSocket hand tracker
+  // ── WebSocket / hand tracker ──────────────────────────────────────────────
   const indicator = document.getElementById('gesture-indicator');
   const statusDot = document.getElementById('ws-status');
-  let hideTimer = null;
+  let hideTimer   = null;
 
   function showGesture(label) {
-    indicator.textContent = label;
-    indicator.classList.add('visible');
-    clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => indicator.classList.remove('visible'), 500);
+    indicator.textContent = label; indicator.classList.add('visible');
+    clearTimeout(hideTimer); hideTimer = setTimeout(() => indicator.classList.remove('visible'), 500);
   }
 
-  // ── Smooth momentum scroller ─────────────────────────────────────────────
-  // Instead of jumping scrollLeft instantly, we accumulate velocity and let
-  // a rAF loop glide it to the target with exponential decay.
-  let scrollVelocity = 0;          // px/frame still to travel
-  let rafId = null;
-  const FRICTION   = 0.82;         // how quickly momentum fades (lower = faster stop)
-  const MIN_DELTA  = 0.4;          // stop animating below this px/frame
+  // Smooth momentum scroller
+  let scrollVelocity = 0, rafId = null;
+  const FRICTION = 0.82, MIN_DELTA = 0.4;
+  const SPEED = { 1: 9, 2: 17, 3: 26, 4: 36 };
 
-  // Finger count → velocity boost per gesture pulse (smaller = shorter jumps)
-  const SPEED = { 1: 14, 2: 26, 3: 40, 4: 56 };
-
-  function kickScroll(dir) {
-    // dir: +1 = right, -1 = left
-    // Each incoming gesture adds a velocity nudge; friction bleeds it off
-    const fingerCount = dir._fingers ?? 1;
-    const boost = (SPEED[fingerCount] ?? 28) * dir._sign;
-    scrollVelocity += boost;
+  function kickScroll(sign, fingers) {
+    scrollVelocity += (SPEED[fingers] ?? 14) * sign;
     if (!rafId) animateScroll();
   }
-
   function animateScroll() {
-    if (Math.abs(scrollVelocity) < MIN_DELTA) {
-      scrollVelocity = 0;
-      rafId = null;
-      return;
-    }
+    if (Math.abs(scrollVelocity) < MIN_DELTA) { scrollVelocity = 0; rafId = null; return; }
     track.scrollLeft += scrollVelocity;
     scrollVelocity   *= FRICTION;
     rafId = requestAnimationFrame(animateScroll);
   }
 
-  // ── Hover: highlight the event closest to viewport centre ────────────────
+  // Hover
   let hoveredEl = null;
   function applyHover() {
     const centre = track.scrollLeft + window.innerWidth / 2;
-    const allEvents = [...inner.querySelectorAll('.event')];
-    if (!allEvents.length) return;
+    const allEvs = [...inner.querySelectorAll('.event')];
+    if (!allEvs.length) return;
     let closest = null, minDist = Infinity;
-    allEvents.forEach(el => {
-      const dist = Math.abs(parseInt(el.style.left) - centre);
-      if (dist < minDist) { minDist = dist; closest = el; }
-    });
+    allEvs.forEach(el => { const dist = Math.abs(parseInt(el.style.left) - centre); if (dist < minDist) { minDist = dist; closest = el; } });
     if (closest === hoveredEl) return;
     if (hoveredEl) hoveredEl.classList.remove('gesture-hover');
     hoveredEl = closest;
     if (hoveredEl) hoveredEl.classList.add('gesture-hover');
   }
-  function clearHover() {
-    if (hoveredEl) { hoveredEl.classList.remove('gesture-hover'); hoveredEl = null; }
-  }
+  function clearHover() { if (hoveredEl) { hoveredEl.classList.remove('gesture-hover'); hoveredEl = null; } }
+
+  // Track how many hands are open for DOUBLE_HOVER
+  let openPalmCount = 0;
+  let doublePalmTimer = null;
 
   function connectWebSocket() {
     const ws = new WebSocket('ws://localhost:8765');
-    ws.onopen = () => { statusDot.className = 'connected'; console.log('[WS] Connected to hand tracker'); };
+    ws.onopen  = () => { statusDot.className = 'connected'; };
+    ws.onclose = () => { statusDot.className = 'disconnected'; clearHover(); setTimeout(connectWebSocket, 2000); };
+    ws.onerror = () => ws.close();
     ws.onmessage = (event) => {
       const gesture = event.data.trim();
-      if (gesture === 'HOVER') {
-        applyHover();
-        showGesture('● hover');
+
+      if (gesture === 'DOUBLE_HOVER') {
+        // Both palms open → open detail for hovered or centre event
+        const target = hoveredEl ?? (() => {
+          const centre = track.scrollLeft + window.innerWidth / 2;
+          const allEvs = [...inner.querySelectorAll('.event')];
+          let closest = null, minDist = Infinity;
+          allEvs.forEach(el => { const d = Math.abs(parseInt(el.style.left) - centre); if (d < minDist) { minDist = d; closest = el; } });
+          return closest;
+        })();
+        if (target) {
+          const ev = events.find(e => e.id === parseInt(target.dataset.id));
+          if (ev) { openDetail(ev); showGesture('🖐🖐 open'); }
+        }
         return;
+      }
+
+      if (gesture === 'HOVER') {
+        applyHover(); showGesture('● hover'); return;
       }
       if (gesture === 'FIST') {
         clearHover();
+        closeDetail();
         showGesture('✊ closed');
         return;
       }
+
       clearHover();
       const m = gesture.match(/^POINTING_(LEFT|RIGHT)_(\d)$/);
       if (!m) return;
       const fingers = parseInt(m[2]);
       const sign    = m[1] === 'LEFT' ? -1 : 1;
-      kickScroll({ _sign: sign, _fingers: fingers });
+      kickScroll(sign, fingers);
       const arrows = '→'.repeat(fingers);
       showGesture(m[1] === 'LEFT' ? '← ' + arrows : arrows + ' →');
     };
-    ws.onclose = () => { statusDot.className = 'disconnected'; clearHover(); console.log('[WS] Disconnected — retrying in 2s...'); setTimeout(connectWebSocket, 2000); };
-    ws.onerror = () => ws.close();
   }
   connectWebSocket();
 
