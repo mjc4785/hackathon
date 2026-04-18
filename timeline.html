@@ -73,6 +73,10 @@
     .event-delete { font-family: 'DM Mono', monospace; font-size: 8px; letter-spacing: 0.1em; color: var(--event-sub); opacity: 0; transition: opacity 0.2s; cursor: pointer; margin-top: 4px; }
     .event.above .event-delete { margin-top: 0; margin-bottom: 4px; }
     .event:hover .event-delete { opacity: 1; }
+    .event.gesture-hover .event-desc { opacity: 1; max-height: 80px; }
+    .event.gesture-hover .event-delete { opacity: 1; }
+    .event.gesture-hover .event-dot { transform: scale(1.8); transition: transform 0.2s; }
+    .event.gesture-hover .event-title { color: var(--accent); transition: color 0.2s; }
 
     #gesture-indicator { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.2em; color: var(--accent); opacity: 0; pointer-events: none; transition: opacity 0.1s ease; text-transform: uppercase; }
     #gesture-indicator.visible { opacity: 0.6; }
@@ -253,15 +257,77 @@
     hideTimer = setTimeout(() => indicator.classList.remove('visible'), 500);
   }
 
+  // ── Smooth momentum scroller ─────────────────────────────────────────────
+  // Instead of jumping scrollLeft instantly, we accumulate velocity and let
+  // a rAF loop glide it to the target with exponential decay.
+  let scrollVelocity = 0;          // px/frame still to travel
+  let rafId = null;
+  const FRICTION   = 0.82;         // how quickly momentum fades (lower = faster stop)
+  const MIN_DELTA  = 0.4;          // stop animating below this px/frame
+
+  // Finger count → velocity boost per gesture pulse (smaller = shorter jumps)
+  const SPEED = { 1: 28, 2: 52, 3: 80, 4: 112 };
+
+  function kickScroll(dir) {
+    // dir: +1 = right, -1 = left
+    // Each incoming gesture adds a velocity nudge; friction bleeds it off
+    const fingerCount = dir._fingers ?? 1;
+    const boost = (SPEED[fingerCount] ?? 28) * dir._sign;
+    scrollVelocity += boost;
+    if (!rafId) animateScroll();
+  }
+
+  function animateScroll() {
+    if (Math.abs(scrollVelocity) < MIN_DELTA) {
+      scrollVelocity = 0;
+      rafId = null;
+      return;
+    }
+    track.scrollLeft += scrollVelocity;
+    scrollVelocity   *= FRICTION;
+    rafId = requestAnimationFrame(animateScroll);
+  }
+
+  // ── Hover: highlight the event closest to viewport centre ────────────────
+  let hoveredEl = null;
+  function applyHover() {
+    const centre = track.scrollLeft + window.innerWidth / 2;
+    const allEvents = [...inner.querySelectorAll('.event')];
+    if (!allEvents.length) return;
+    let closest = null, minDist = Infinity;
+    allEvents.forEach(el => {
+      const dist = Math.abs(parseInt(el.style.left) - centre);
+      if (dist < minDist) { minDist = dist; closest = el; }
+    });
+    if (closest === hoveredEl) return;
+    if (hoveredEl) hoveredEl.classList.remove('gesture-hover');
+    hoveredEl = closest;
+    if (hoveredEl) hoveredEl.classList.add('gesture-hover');
+  }
+  function clearHover() {
+    if (hoveredEl) { hoveredEl.classList.remove('gesture-hover'); hoveredEl = null; }
+  }
+
   function connectWebSocket() {
     const ws = new WebSocket('ws://localhost:8765');
     ws.onopen = () => { statusDot.className = 'connected'; console.log('[WS] Connected to hand tracker'); };
     ws.onmessage = (event) => {
       const gesture = event.data.trim();
-      if (gesture === 'POINTING_LEFT') { track.scrollLeft -= SCROLL_AMOUNT; showGesture('← left'); }
-      else if (gesture === 'POINTING_RIGHT') { track.scrollLeft += SCROLL_AMOUNT; showGesture('right →'); }
+      if (gesture === 'HOVER') {
+        applyHover();
+        showGesture('● hover');
+        return;
+      }
+      clearHover();
+      const m = gesture.match(/^POINTING_(LEFT|RIGHT)_(\d)$/);
+      if (!m) return;
+      const fingers = parseInt(m[2]);
+      const sign    = m[1] === 'LEFT' ? -1 : 1;
+      kickScroll({ _sign: sign, _fingers: fingers });
+      const arrows = '→'.repeat(fingers);
+      showGesture(m[1] === 'LEFT' ? '← ' + arrows : arrows + ' →');
     };
-    ws.onclose = () => { statusDot.className = 'disconnected'; console.log('[WS] Disconnected — retrying in 2s...'); setTimeout(connectWebSocket, 2000); };
+    ws.onclose = () => { statusDot.className = 'disconnected'; clearHover(); console.log('[WS] Disconnected — retrying in 2s...'); setTimeout(connectWebSocket, 2000); };
     ws.onerror = () => ws.close();
   }
   connectWebSocket();

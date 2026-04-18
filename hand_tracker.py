@@ -10,12 +10,14 @@ Requirements:
 Usage:
     1. Run this script:   python hand_tracker.py
     2. Open timeline.html in your browser
-    3. Point LEFT  → timeline scrolls left
-       Point RIGHT → timeline scrolls right
+    3. Point LEFT  → timeline scrolls left  (more fingers = faster)
+       Point RIGHT → timeline scrolls right (more fingers = faster)
+       Open palm   → highlight nearest event (hover)
 """
 
 import asyncio
 import threading
+import time
 import cv2
 import mediapipe as mp
 import websockets
@@ -23,21 +25,19 @@ from websockets.server import serve
 
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 
-WS_HOST       = "localhost"
-WS_PORT       = 8765
-SCROLL_AMOUNT = 300        # pixels to scroll per gesture pulse
-GESTURE_COOLDOWN = 0.15   # seconds between scroll pulses (prevents flooding)
+WS_HOST          = "localhost"
+WS_PORT          = 8765
+GESTURE_COOLDOWN = 0.12   # seconds between scroll pulses
 
 # ─── SHARED STATE ────────────────────────────────────────────────────────────
 
 connected_clients: set = set()
-loop: asyncio.AbstractEventLoop = None   # set when the WS thread starts
+loop: asyncio.AbstractEventLoop = None
 
 
 # ─── WEBSOCKET SERVER ────────────────────────────────────────────────────────
 
 async def ws_handler(websocket):
-    """Accept a browser connection and keep it open."""
     connected_clients.add(websocket)
     print(f"[WS] Browser connected  (total: {len(connected_clients)})")
     try:
@@ -48,7 +48,6 @@ async def ws_handler(websocket):
 
 
 async def broadcast(message: str):
-    """Send a message to every connected browser."""
     if connected_clients:
         await asyncio.gather(
             *[client.send(message) for client in connected_clients],
@@ -57,13 +56,11 @@ async def broadcast(message: str):
 
 
 def send_gesture(gesture: str):
-    """Thread-safe helper called from the CV thread."""
     if loop and connected_clients:
         asyncio.run_coroutine_threadsafe(broadcast(gesture), loop)
 
 
 def start_ws_server():
-    """Run the WebSocket server in its own thread + event loop."""
     global loop
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -71,7 +68,7 @@ def start_ws_server():
     async def _run():
         async with serve(ws_handler, WS_HOST, WS_PORT):
             print(f"[WS] Server listening on ws://{WS_HOST}:{WS_PORT}")
-            await asyncio.Future()   # run forever
+            await asyncio.Future()
 
     loop.run_until_complete(_run())
 
@@ -89,28 +86,44 @@ def get_gesture(hand_landmarks, handedness):
         "pinky":  lm[20].y < lm[18].y,
     }
 
-    # Only index finger extended = pointing
-    only_index = fingers["index"] and not any(
-        [fingers["thumb"], fingers["middle"], fingers["ring"], fingers["pinky"]]
-    )
-    if not only_index:
+    # ── HOVER: all 5 fingers extended = open palm ──────────────────────────
+    if all(fingers.values()):
+        return "HOVER"
+
+    # ── SCROLL: count extended non-thumb fingers ────────────────────────────
+    # Thumb must be closed (fist-like base) to avoid false positives
+    if fingers["thumb"]:
         return ""
 
-    tip_x   = lm[8].x
-    wrist_x = lm[0].x
-    diff    = tip_x - wrist_x
+    extended = [fingers["index"], fingers["middle"],
+                fingers["ring"],  fingers["pinky"]]
+    num = sum(extended)
+    if num == 0:
+        return ""
+
+    # Average x of extended fingertips vs wrist
+    tip_xs = [lm[8].x, lm[12].x, lm[16].x, lm[20].x]
+    avg_tip_x = sum(x for x, ext in zip(tip_xs, extended) if ext) / num
+    diff      = avg_tip_x - lm[0].x  # wrist
 
     if diff > 0.1:
-        return "POINTING_LEFT"
+        return f"POINTING_LEFT_{num}"   # 1–4 fingers
     elif diff < -0.1:
-        return "POINTING_RIGHT"
+        return f"POINTING_RIGHT_{num}"
     return ""
 
 
 # ─── MAIN LOOP ───────────────────────────────────────────────────────────────
 
+# Labels shown in the OpenCV window
+GESTURE_LABELS = {
+    "HOVER": "HOVER",
+    **{f"POINTING_LEFT_{n}":  f"<< LEFT  x{n}" for n in range(1, 5)},
+    **{f"POINTING_RIGHT_{n}": f"RIGHT >> x{n}" for n in range(1, 5)},
+}
+
+
 def main():
-    # Start WS server in background thread
     ws_thread = threading.Thread(target=start_ws_server, daemon=True)
     ws_thread.start()
 
@@ -118,14 +131,11 @@ def main():
     mp_drawing = mp.solutions.drawing_utils
     cap        = cv2.VideoCapture(index=0)
 
-    last_gesture   = ""
     last_sent_time = 0.0
-
-    import time
 
     with mp_hands.Hands(
         model_complexity=0,
-        max_num_hands=4,
+        max_num_hands=1,
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5,
     ) as hands:
@@ -137,8 +147,7 @@ def main():
 
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results   = hands.process(frame_rgb)
-
-            gesture = ""
+            gesture   = ""
 
             if results.multi_hand_landmarks:
                 for hand_landmarks, handedness in zip(
@@ -151,20 +160,21 @@ def main():
 
                     if gesture:
                         now = time.monotonic()
-                        if now - last_sent_time >= GESTURE_COOLDOWN:
-                            print(f"[GESTURE] {gesture}")
+                        # HOVER sends continuously so browser can track it;
+                        # scroll gestures respect cooldown
+                        is_scroll = gesture.startswith("POINTING")
+                        if not is_scroll or (now - last_sent_time >= GESTURE_COOLDOWN):
                             send_gesture(gesture)
-                            last_sent_time = now
+                            if is_scroll:
+                                last_sent_time = now
 
-                        label = gesture.replace("_", " ")
-                        cv2.putText(
-                            frame, label, (10, 50),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3,
-                        )
+                        label = GESTURE_LABELS.get(gesture, gesture)
+                        cv2.putText(frame, label, (10, 50),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
 
-            # Show client count in corner
-            status = f"Browsers: {len(connected_clients)}"
-            cv2.putText(frame, status, (10, frame.shape[0] - 15),
+            # Client count overlay
+            cv2.putText(frame, f"Browsers: {len(connected_clients)}",
+                        (10, frame.shape[0] - 15),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
 
             cv2.imshow("Hand Tracking", cv2.flip(frame, 1))
