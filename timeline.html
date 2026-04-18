@@ -11,20 +11,53 @@
       --bg: #f5f2ed; --line: #1a1a1a; --tick: #1a1a1a; --label: #1a1a1a;
       --event-dot: #1a1a1a; --event-title: #1a1a1a; --event-sub: #7a7570; --accent: #c0392b;
     }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); font-family: 'DM Mono', monospace; }
+
+    /* Create UI */
+    #create-ui {
+      position: fixed; top: 28px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 10px; align-items: center; z-index: 100;
+    }
+    #create-ui input {
+      background: transparent; border: none; border-bottom: 1px solid rgba(26,26,26,0.25);
+      font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.12em;
+      color: var(--label); outline: none; padding: 4px 0; width: 130px;
+      transition: border-color 0.2s;
+    }
+    #create-ui input::placeholder { color: var(--event-sub); opacity: 1; }
+    #create-ui input:focus { border-bottom-color: var(--accent); }
+    #create-ui input#ev-title { width: 180px; }
+    #create-ui input#ev-desc { width: 200px; }
+    #add-btn {
+      background: none; border: none; cursor: pointer;
+      font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.18em;
+      color: var(--accent); padding: 4px 0; text-transform: uppercase;
+      transition: opacity 0.2s;
+    }
+    #add-btn:hover { opacity: 0.6; }
+    #err-msg {
+      position: fixed; top: 62px; left: 50%; transform: translateX(-50%);
+      font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.14em;
+      color: var(--accent); opacity: 0; transition: opacity 0.3s; pointer-events: none;
+    }
+    #err-msg.show { opacity: 1; }
+
+    /* Timeline */
     #timeline-track {
       position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
       overflow-x: scroll; overflow-y: hidden; cursor: grab; user-select: none;
-      -webkit-overflow-scrolling: touch; scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
     }
     #timeline-track:active { cursor: grabbing; }
     #timeline-track::-webkit-scrollbar { display: none; }
     #timeline-track { scrollbar-width: none; }
     #timeline-inner { position: relative; height: 100vh; }
     #spine { position: absolute; top: 50%; left: 0; width: 100%; height: 1px; background: var(--line); }
+
     .tick { position: absolute; top: 50%; transform: translateX(-50%) translateY(-50%); display: flex; flex-direction: column; align-items: center; }
     .tick-mark { width: 1px; height: 12px; background: var(--tick); }
-    .event { position: absolute; top: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }
+
+    .event { position: absolute; top: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; cursor: default; }
     .event.above { flex-direction: column-reverse; transform: translateX(-50%) translateY(-100%); }
     .event-connector { width: 1px; height: 40px; background: var(--event-dot); opacity: 0.25; }
     .event-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--event-dot); flex-shrink: 0; }
@@ -34,7 +67,13 @@
     .event.below .event-card { text-align: left; padding-top: 12px; }
     .event-date { font-family: 'DM Mono', monospace; font-weight: 300; font-size: 9px; letter-spacing: 0.14em; color: var(--event-sub); text-transform: uppercase; margin-bottom: 4px; }
     .event-title { font-family: 'Playfair Display', serif; font-size: 13px; font-weight: 400; color: var(--event-title); line-height: 1.3; }
-    .event-title.italic { font-style: italic; }
+    .event-desc { font-family: 'DM Mono', monospace; font-weight: 300; font-size: 8px; letter-spacing: 0.08em; color: var(--event-sub); line-height: 1.5; margin-top: 5px; max-width: 160px; opacity: 0; max-height: 0; overflow: hidden; transition: opacity 0.25s, max-height 0.25s; }
+    .event.above .event-desc { text-align: right; margin-top: 0; margin-bottom: 5px; }
+    .event:hover .event-desc { opacity: 1; max-height: 80px; }
+    .event-delete { font-family: 'DM Mono', monospace; font-size: 8px; letter-spacing: 0.1em; color: var(--event-sub); opacity: 0; transition: opacity 0.2s; cursor: pointer; margin-top: 4px; }
+    .event.above .event-delete { margin-top: 0; margin-bottom: 4px; }
+    .event:hover .event-delete { opacity: 1; }
+
     #gesture-indicator { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.2em; color: var(--accent); opacity: 0; pointer-events: none; transition: opacity 0.1s ease; text-transform: uppercase; }
     #gesture-indicator.visible { opacity: 0.6; }
     #ws-status { position: fixed; bottom: 20px; right: 20px; width: 7px; height: 7px; border-radius: 50%; background: #ccc; transition: background 0.4s; }
@@ -43,76 +82,191 @@
     #hint { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%); font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.2em; color: var(--label); opacity: 0.3; pointer-events: none; transition: opacity 0.6s ease; }
     #hint.hidden { opacity: 0; }
     #cursor-line { position: fixed; top: 0; left: 50%; width: 1px; height: 100vh; background: var(--accent); opacity: 0.08; pointer-events: none; }
+    #empty-hint { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.2em; color: var(--event-sub); opacity: 0.5; pointer-events: none; text-align: center; line-height: 2; transition: opacity 0.4s; }
   </style>
 </head>
 <body>
+
+<div id="create-ui">
+  <input id="ev-date" placeholder="date" autocomplete="off" />
+  <input id="ev-title" placeholder="event name" autocomplete="off" />
+  <input id="ev-desc" placeholder="description (optional)" autocomplete="off" />
+  <button id="add-btn" onclick="addEvent()">add</button>
+</div>
+<div id="err-msg"></div>
+
 <div id="timeline-track"><div id="timeline-inner"><div id="spine"></div></div></div>
 <div id="cursor-line"></div>
 <div id="hint">scroll or point to travel</div>
+<div id="empty-hint">add an event above<br>to begin</div>
 <div id="gesture-indicator"></div>
 <div id="ws-status" title="Hand tracker connection"></div>
+
 <script>
-  const events = [
-    { date: "4.5 bya",  title: "Earth forms",               above: true,  accent: true  },
-    { date: "3.8 bya",  title: "First life",                above: false, accent: false },
-    { date: "541 mya",  title: "Cambrian Explosion",         above: true,  accent: false },
-    { date: "252 mya",  title: "The Great Dying",            above: false, accent: true  },
-    { date: "66 mya",   title: "K-Pg Extinction",            above: true,  accent: false },
-    { date: "2.5 mya",  title: "Homo habilis",               above: false, accent: false },
-    { date: "300 kya",  title: "Homo sapiens",               above: true,  accent: false },
-    { date: "3500 bce", title: "Writing invented",           above: false, accent: false },
-    { date: "776 bce",  title: "First Olympics",             above: true,  accent: false },
-    { date: "44 bce",   title: "Caesar assassinated",        above: false, accent: true  },
-    { date: "105 ce",   title: "Paper invented",             above: true,  accent: false },
-    { date: "1440",     title: "Gutenberg press",            above: false, accent: false },
-    { date: "1687",     title: "Newton's Principia",         above: true,  accent: false },
-    { date: "1776",     title: "Declaration of Independence",above: false, accent: true  },
-    { date: "1859",     title: "On the Origin of Species",   above: true,  accent: false },
-    { date: "1903",     title: "First powered flight",       above: false, accent: false },
-    { date: "1945",     title: "Atomic age begins",          above: true,  accent: true  },
-    { date: "1969",     title: "Moon landing",               above: false, accent: false },
-    { date: "1991",     title: "World Wide Web",             above: true,  accent: false },
-    { date: "2023",     title: "The AI moment",              above: false, accent: true  },
-  ];
-  const PADDING=200, EVENT_GAP=220, TICK_INTERVAL=440, SCROLL_AMOUNT=300;
-  const inner=document.getElementById('timeline-inner');
-  const track=document.getElementById('timeline-track');
-  const hint=document.getElementById('hint');
-  const totalWidth = PADDING*2 + (events.length-1)*EVENT_GAP;
-  inner.style.width = totalWidth+'px';
-  events.forEach((ev,i) => {
-    const x=PADDING+i*EVENT_GAP, el=document.createElement('div');
-    el.className=`event ${ev.above?'above':'below'}`;
-    el.style.left=x+'px'; el.style.top='50%';
-    el.innerHTML=`<div class="event-card"><div class="event-date">${ev.date}</div><div class="event-title${ev.accent?' italic':''}">${ev.title}</div></div><div class="event-connector"></div><div class="event-dot${ev.accent?' accent':''}"></div>`;
-    inner.appendChild(el);
-  });
-  for(let x=PADDING;x<totalWidth-PADDING;x+=TICK_INTERVAL){
-    const t=document.createElement('div'); t.className='tick'; t.style.left=x+'px'; t.style.top='50%';
-    t.innerHTML='<div class="tick-mark"></div>'; inner.appendChild(t);
+  const PADDING = 260, GAP = 220, TICK_INT = 440, SCROLL_AMOUNT = 300;
+  let events = [];
+
+  const inner = document.getElementById('timeline-inner');
+  const track = document.getElementById('timeline-track');
+  const hint = document.getElementById('hint');
+  const emptyHint = document.getElementById('empty-hint');
+  const errEl = document.getElementById('err-msg');
+  let errTimer = null;
+
+  function showErr(msg) {
+    errEl.textContent = msg;
+    errEl.classList.add('show');
+    clearTimeout(errTimer);
+    errTimer = setTimeout(() => errEl.classList.remove('show'), 2400);
   }
-  track.scrollLeft = PADDING - window.innerWidth/2;
-  let isDragging=false,startX=0,startScroll=0;
-  track.addEventListener('mousedown',e=>{isDragging=true;startX=e.clientX;startScroll=track.scrollLeft;});
-  window.addEventListener('mousemove',e=>{if(!isDragging)return;track.scrollLeft=startScroll-(e.clientX-startX);});
-  window.addEventListener('mouseup',()=>{isDragging=false;});
-  track.addEventListener('scroll',()=>hint.classList.add('hidden'),{once:true});
-  const indicator=document.getElementById('gesture-indicator');
-  let hideTimer=null;
-  function showGesture(label){indicator.textContent=label;indicator.classList.add('visible');clearTimeout(hideTimer);hideTimer=setTimeout(()=>indicator.classList.remove('visible'),500);}
-  const statusDot=document.getElementById('ws-status');
-  function connectWebSocket(){
-    const ws=new WebSocket('ws://localhost:8765');
-    ws.onopen=()=>{statusDot.className='connected';console.log('[WS] Connected to hand tracker');};
-    ws.onmessage=(event)=>{
-      const gesture=event.data.trim();
-      if(gesture==='POINTING_LEFT'){track.scrollLeft-=SCROLL_AMOUNT;showGesture('← left');}
-      else if(gesture==='POINTING_RIGHT'){track.scrollLeft+=SCROLL_AMOUNT;showGesture('right →');}
+
+  function parseDateValue(raw) {
+    const s = raw.trim().toLowerCase();
+    if (!s) return null;
+
+    // MM/DD/YYYY
+    const mdyMatch = raw.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (mdyMatch) {
+      const d = new Date(parseInt(mdyMatch[3]), parseInt(mdyMatch[1]) - 1, parseInt(mdyMatch[2]));
+      if (!isNaN(d.getTime())) return d.getFullYear() + (d.getMonth() / 12) + (d.getDate() / 365);
+    }
+    // bya
+    const byaMatch = s.match(/^([\d.]+)\s*bya$/);
+    if (byaMatch) return -parseFloat(byaMatch[1]) * 1e9;
+    // mya
+    const myaMatch = s.match(/^([\d.]+)\s*(mya|ma)$/);
+    if (myaMatch) return -parseFloat(myaMatch[1]) * 1e6;
+    // kya
+    const kyaMatch = s.match(/^([\d.]+)\s*(kya|ka)$/);
+    if (kyaMatch) return -parseFloat(kyaMatch[1]) * 1e3;
+    // BCE/BC
+    const bcMatch = s.match(/^(\d[\d.,]*)\s*(bce?|bc)$/);
+    if (bcMatch) return -parseFloat(bcMatch[1].replace(/,/g, ''));
+    // plain year
+    if (s.match(/^-?\d+$/)) return parseInt(s);
+    // "April 16th, 2026" / "April 16, 2026" — strip ordinal suffix then parse
+    const ordinalStripped = raw.replace(/(\d+)(st|nd|rd|th)/i, '$1');
+    const d2 = new Date(ordinalStripped);
+    if (!isNaN(d2.getTime())) return d2.getFullYear() + (d2.getMonth() / 12) + (d2.getDate() / 365);
+    // natural date string
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) return d.getFullYear() + (d.getMonth() / 12);
+
+    return null;
+  }
+
+  function addEvent() {
+    const dateRaw = document.getElementById('ev-date').value.trim();
+    const titleRaw = document.getElementById('ev-title').value.trim();
+    if (!dateRaw) { showErr('enter a date'); return; }
+    if (!titleRaw) { showErr('enter an event name'); return; }
+    const val = parseDateValue(dateRaw);
+    if (val === null) { showErr('unrecognised date — try 1969, 44 bce, 3.8 bya, or MM/DD/YYYY'); return; }
+    const descRaw = document.getElementById('ev-desc').value.trim();
+    events.push({ date: dateRaw, val, title: titleRaw, desc: descRaw, id: Date.now() });
+    events.sort((a, b) => a.val - b.val);
+    document.getElementById('ev-date').value = '';
+    document.getElementById('ev-title').value = '';
+    document.getElementById('ev-desc').value = '';
+    document.getElementById('ev-date').focus();
+    render();
+  }
+
+  function deleteEvent(id) {
+    events = events.filter(e => e.id !== id);
+    render();
+  }
+
+  function render() {
+    inner.querySelectorAll('.event, .tick').forEach(n => n.remove());
+    emptyHint.style.opacity = events.length ? '0' : '0.5';
+    if (!events.length) { inner.style.width = '100vw'; return; }
+
+    const totalW = PADDING * 2 + (events.length - 1) * GAP;
+    inner.style.width = Math.max(totalW, window.innerWidth) + 'px';
+
+    events.forEach((ev, i) => {
+      const x = PADDING + i * GAP;
+      const above = i % 2 === 0;
+      const el = document.createElement('div');
+      el.className = 'event ' + (above ? 'above' : 'below');
+      el.style.left = x + 'px';
+      el.style.top = '50%';
+
+      const del = document.createElement('div');
+      del.className = 'event-delete';
+      del.textContent = 'remove';
+      del.onclick = () => deleteEvent(ev.id);
+
+      const card = document.createElement('div');
+      card.className = 'event-card';
+      card.innerHTML = `<div class="event-date">${ev.date}</div><div class="event-title">${ev.title}</div>${ev.desc ? `<div class="event-desc">${ev.desc}</div>` : ''}`;
+
+      const conn = document.createElement('div');
+      conn.className = 'event-connector';
+      const dot = document.createElement('div');
+      dot.className = 'event-dot accent';
+
+      if (above) {
+        el.appendChild(del);
+        el.appendChild(card);
+        el.appendChild(conn);
+        el.appendChild(dot);
+      } else {
+        el.appendChild(dot);
+        el.appendChild(conn);
+        el.appendChild(card);
+        el.appendChild(del);
+      }
+      inner.appendChild(el);
+    });
+
+    for (let x = PADDING; x <= totalW - PADDING; x += TICK_INT) {
+      const t = document.createElement('div');
+      t.className = 'tick'; t.style.left = x + 'px'; t.style.top = '50%';
+      t.innerHTML = '<div class="tick-mark"></div>';
+      inner.appendChild(t);
+    }
+  }
+
+  // Drag to scroll
+  let isDragging = false, startX = 0, startScroll = 0;
+  track.addEventListener('mousedown', e => { isDragging = true; startX = e.clientX; startScroll = track.scrollLeft; });
+  window.addEventListener('mousemove', e => { if (!isDragging) return; track.scrollLeft = startScroll - (e.clientX - startX); });
+  window.addEventListener('mouseup', () => { isDragging = false; });
+  track.addEventListener('scroll', () => hint.classList.add('hidden'), { once: true });
+
+  // Keyboard shortcuts
+  document.getElementById('ev-title').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('ev-desc').focus(); });
+  document.getElementById('ev-desc').addEventListener('keydown', e => { if (e.key === 'Enter') addEvent(); });
+  document.getElementById('ev-date').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('ev-title').focus(); });
+
+  // WebSocket hand tracker
+  const indicator = document.getElementById('gesture-indicator');
+  const statusDot = document.getElementById('ws-status');
+  let hideTimer = null;
+
+  function showGesture(label) {
+    indicator.textContent = label;
+    indicator.classList.add('visible');
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => indicator.classList.remove('visible'), 500);
+  }
+
+  function connectWebSocket() {
+    const ws = new WebSocket('ws://localhost:8765');
+    ws.onopen = () => { statusDot.className = 'connected'; console.log('[WS] Connected to hand tracker'); };
+    ws.onmessage = (event) => {
+      const gesture = event.data.trim();
+      if (gesture === 'POINTING_LEFT') { track.scrollLeft -= SCROLL_AMOUNT; showGesture('← left'); }
+      else if (gesture === 'POINTING_RIGHT') { track.scrollLeft += SCROLL_AMOUNT; showGesture('right →'); }
     };
-    ws.onclose=()=>{statusDot.className='disconnected';console.log('[WS] Disconnected — retrying in 2s...');setTimeout(connectWebSocket,2000);};
-    ws.onerror=()=>ws.close();
+    ws.onclose = () => { statusDot.className = 'disconnected'; console.log('[WS] Disconnected — retrying in 2s...'); setTimeout(connectWebSocket, 2000); };
+    ws.onerror = () => ws.close();
   }
   connectWebSocket();
+
+  render();
 </script>
 </body>
 </html>
